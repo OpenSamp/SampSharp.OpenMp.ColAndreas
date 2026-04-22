@@ -1,0 +1,102 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    tags: ['v*']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout wrapper repo
+        uses: actions/checkout@v4
+        with:
+          path: openmp-sampsharp-colandreas
+          submodules: recursive
+
+      # The wrapper csproj has ProjectReferences pointing at
+      # ../openmp-sampsharp-x64-poc/src/SampSharp.OpenMp.{Core,Entities}.
+      # Standalone CI needs that repo cloned as a sibling — VSRP gets it via
+      # its own submodule layout, but here we have to fetch it ourselves.
+      - name: Checkout SampSharp x64 poc (sibling)
+        uses: actions/checkout@v4
+        with:
+          repository: OpenSamp/openmp-sampsharp-x64-poc
+          path: openmp-sampsharp-x64-poc
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        working-directory: openmp-sampsharp-colandreas
+        run: dotnet restore SampSharp.OpenMp.ColAndreas.csproj
+
+      - name: Build
+        working-directory: openmp-sampsharp-colandreas
+        run: dotnet build SampSharp.OpenMp.ColAndreas.csproj -c Release --no-restore -nologo
+
+      - name: Declare github variables
+        id: vars
+        shell: bash
+        run: |
+          echo "sha_short=$(git -C openmp-sampsharp-colandreas rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifact
+        # Single OS upload — managed assemblies are platform-independent, the
+        # other matrix runs are smoke tests for the build itself, not for
+        # producing additional artifacts.
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SampSharp.OpenMp.ColAndreas-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
+          path: |
+            openmp-sampsharp-colandreas/bin/Release/net9.0/SampSharp.OpenMp.ColAndreas.dll
+            openmp-sampsharp-colandreas/bin/Release/net9.0/SampSharp.OpenMp.ColAndreas.xml
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+          mkdir -p dist
+          # Take the single uploaded artifact (linux build only — see build job).
+          src=( artifacts/SampSharp.OpenMp.ColAndreas-* )
+          if [ ${#src[@]} -eq 0 ]; then
+            echo "::error::No build artifact found"
+            exit 1
+          fi
+          (cd "${src[0]}" && zip -r "../../dist/SampSharp.OpenMp.ColAndreas-${tag}.zip" .)
+          ls -lh dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
