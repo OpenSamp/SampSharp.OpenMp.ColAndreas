@@ -20,38 +20,38 @@ jobs:
       - name: Checkout wrapper repo
         uses: actions/checkout@v4
         with:
-          path: openmp-sampsharp-colandreas
+          path: src/submodules/openmp-sampsharp-colandreas
           submodules: recursive
 
-      # The wrapper csproj has ProjectReferences pointing at
-      # ../openmp-sampsharp-x64-poc/src/SampSharp.OpenMp.{Core,Entities}.
-      # Standalone CI needs that repo cloned as a sibling — VSRP gets it via
-      # its own submodule layout, but here we have to fetch it ourselves.
-      - name: Checkout SampSharp x64 poc (sibling)
+      # The wrapper csproj reaches SampSharp via ../../SampSharp/src/..., so the
+      # two checkouts have to sit at the same relative depth they have inside
+      # VSRP: src/submodules/<wrapper> alongside src/SampSharp. Checking both out
+      # at the workspace root makes that path escape the workspace entirely.
+      - name: Checkout SampSharp (sibling)
         uses: actions/checkout@v4
         with:
-          repository: OpenSamp/openmp-sampsharp-x64-poc
-          path: openmp-sampsharp-x64-poc
+          repository: ikkentim/SampSharp
+          path: src/SampSharp
           submodules: recursive
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '9.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Restore
-        working-directory: openmp-sampsharp-colandreas
+        working-directory: src/submodules/openmp-sampsharp-colandreas
         run: dotnet restore SampSharp.OpenMp.ColAndreas.csproj
 
       - name: Build
-        working-directory: openmp-sampsharp-colandreas
+        working-directory: src/submodules/openmp-sampsharp-colandreas
         run: dotnet build SampSharp.OpenMp.ColAndreas.csproj -c Release --no-restore -nologo
 
       - name: Declare github variables
         id: vars
         shell: bash
         run: |
-          echo "sha_short=$(git -C openmp-sampsharp-colandreas rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha_short=$(git -C src/submodules/openmp-sampsharp-colandreas rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
           echo "date=$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
@@ -63,8 +63,8 @@ jobs:
         with:
           name: SampSharp.OpenMp.ColAndreas-${{ steps.vars.outputs.date }}-${{ steps.vars.outputs.sha_short }}
           path: |
-            openmp-sampsharp-colandreas/bin/Release/net9.0/SampSharp.OpenMp.ColAndreas.dll
-            openmp-sampsharp-colandreas/bin/Release/net9.0/SampSharp.OpenMp.ColAndreas.xml
+            src/submodules/openmp-sampsharp-colandreas/bin/Release/net10.0/SampSharp.OpenMp.ColAndreas.dll
+            src/submodules/openmp-sampsharp-colandreas/bin/Release/net10.0/SampSharp.OpenMp.ColAndreas.xml
           if-no-files-found: error
 
   release:
