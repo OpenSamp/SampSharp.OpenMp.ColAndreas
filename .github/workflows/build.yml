@@ -17,6 +17,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
+      # The SampSharp checkout below carries source-generator snapshot files whose
+      # names run past 260 characters once nested at the depth the csproj reference
+      # requires; without this git aborts the checkout with "Filename too long".
+      - name: Allow long paths on Windows
+        if: runner.os == 'Windows'
+        run: git config --global core.longpaths true
+
       - name: Checkout wrapper repo
         uses: actions/checkout@v4
         with:
