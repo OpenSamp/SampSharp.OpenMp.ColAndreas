@@ -76,7 +76,8 @@ build artifact; tagged pushes cut a GitHub release.
 
 ## License
 
-Apache-2.0.
+Apache-2.0 -- see [LICENSE](LICENSE). That covers the bindings in this
+repository; ColAndreas itself is licensed separately by its authors.
 
 ---
 
